@@ -1,0 +1,6 @@
+{
+  "name": "Sáng Ảnh — Xưởng Tạo & Chỉnh Sửa Ảnh AI",
+  "description": "Chinh Phục Đỉnh Tri Thức — Ứng dụng trò chơi học tập môn Tiếng Anh cấp Tiểu học kết hợp AI và bộ câu hỏi giáo viên cung cấp, phát triển bởi cô giáo Văn Thị Thuỳ Trang.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
