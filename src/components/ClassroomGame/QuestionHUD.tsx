@@ -336,8 +336,8 @@ export const QuestionHUD: React.FC<QuestionHUDProps> = ({
             </div>
             <div className="text-sm sm:text-base font-black text-amber-300 truncate">
               {selectedStudentName
-                ? `🐊 Student Caught: ${selectedStudentName} (Turn #${studentCallCount})`
-                : '🐊 Click "🐊 CROCODILE CATCH!" in the 3D Lake to call a student!'}
+                ? `🐊 Student Caught: ${selectedStudentName} (Called 1/1 in this game)`
+                : '🐊 Click "🐊 CROCODILE CATCH!" in the 3D Lake to call a student (each student called once)!'}
             </div>
           </div>
         </div>
@@ -363,12 +363,13 @@ export const QuestionHUD: React.FC<QuestionHUDProps> = ({
           {question.question}
         </h2>
 
-        {displayMode === 'question_image' && (
+        {(displayMode === 'question_image' ||
+          (Boolean(question.visualData) && manualDisplayModeOverride !== 'options_image')) && (
           <QuestionVisualIllustration question={question} />
         )}
       </div>
 
-      {/* 4 Answer Options Grid - Extra Large Font & Clear Visual Illustrations per Option */}
+      {/* 4 Answer Options Grid - Supports Text Only, Image Only, or Both Text & Image */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 shrink-0">
         {question.options.map((opt, idx) => {
           const style = OPTION_COLORS[idx % OPTION_COLORS.length];
@@ -390,12 +391,34 @@ export const QuestionHUD: React.FC<QuestionHUDProps> = ({
             }
           }
 
-          const cleanOptionText = opt.replace(/^[A-D][\.\)\:\-]\s*/i, '').trim();
-          const hasUploadedOptionBitmap = Boolean(
+          const rawCleaned = String(opt || '')
+            .replace(
+              /^(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+[A-D]\s*[.:)\-–—]?\s*/i,
+              ''
+            )
+            .replace(/^[A-D][\.\)\:\-]\s*/i, '')
+            .trim();
+
+          const hasOptionText =
+            Boolean(rawCleaned) &&
+            !/^(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s*[A-D]$/i.test(
+              rawCleaned
+            ) &&
+            !/^[A-D][.:)]*$/i.test(rawCleaned);
+          const cleanOptionText = hasOptionText ? rawCleaned : '';
+
+          const hasAnyUploadedOptionBitmap = Boolean(
+            question.optionImages?.some((img) => Boolean(img && img.trim()))
+          );
+          const hasThisUploadedOptionBitmap = Boolean(
             question.optionImages?.[idx] && question.optionImages[idx].trim()
           );
-          const isPlaceholderLabel =
-            hasUploadedOptionBitmap && /^Option\s+[A-D]$/i.test(cleanOptionText);
+
+          const shouldShowOptionImage = hasAnyUploadedOptionBitmap
+            ? hasThisUploadedOptionBitmap ||
+              !hasOptionText ||
+              manualDisplayModeOverride === 'options_image'
+            : displayMode === 'options_image' || !hasOptionText;
 
           return (
             <motion.div
@@ -412,13 +435,13 @@ export const QuestionHUD: React.FC<QuestionHUDProps> = ({
                   >
                     {OPTION_LABELS[idx]}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    {!isPlaceholderLabel && (
+                  {hasOptionText && (
+                    <div className="min-w-0 flex-1">
                       <div className="text-base sm:text-xl md:text-2xl font-black leading-snug break-words">
                         {cleanOptionText}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Read Option Aloud in American English */}
@@ -426,7 +449,7 @@ export const QuestionHUD: React.FC<QuestionHUDProps> = ({
                   type="button"
                   onClick={(e) =>
                     handleReadOption(
-                      isPlaceholderLabel ? `Option ${OPTION_LABELS[idx]}` : cleanOptionText,
+                      hasOptionText ? cleanOptionText : `Option ${OPTION_LABELS[idx]}`,
                       e
                     )
                   }
@@ -437,7 +460,7 @@ export const QuestionHUD: React.FC<QuestionHUDProps> = ({
                 </button>
               </div>
 
-              {displayMode === 'options_image' && (
+              {shouldShowOptionImage && (
                 <OptionVisualIllustration
                   question={question}
                   optionIndex={idx}

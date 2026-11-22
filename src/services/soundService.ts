@@ -1469,11 +1469,35 @@ class SoundService {
     }
 
     (options || []).slice(0, 4).forEach((opt, idx) => {
-      const cleanOpt = this.preparePureEnglishSpeechText(opt);
+      const letter = optLabels[idx] || String.fromCharCode(65 + idx);
+      const cleanOpt = this.preparePureEnglishSpeechText(opt)
+        .replace(
+          new RegExp(
+            `^(?:option|answer|choice|đáp\\s*án|phương\\s*án|lựa\\s*chọn)\\s*${letter}\\b[.:)\\-–—]*\\s*`,
+            'i'
+          ),
+          ''
+        )
+        .replace(
+          /^(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+[A-D]\b[.:)\-–—]*\s*/i,
+          ''
+        )
+        .replace(/^[A-D]\s*[.:)\-–—]+\s*/i, '')
+        .trim();
+
+      const hasRealOptionText =
+        Boolean(cleanOpt) &&
+        !new RegExp(`^(?:option\\s*)?${letter}[.:)]*$`, 'i').test(cleanOpt) &&
+        !/^(?:option\s+[A-D]|answer\s+[A-D]|choice\s+[A-D]|đáp\s*án\s+[A-D]|phương\s*án\s+[A-D]|hình\s*ảnh|image|picture)$/i.test(
+          cleanOpt
+        );
+
       segments.push({
         lang: 'en-US',
-        text: `Option ${optLabels[idx]}. ${cleanOpt}.`,
-        label: `Option ${optLabels[idx]}`,
+        text: hasRealOptionText
+          ? `Option ${letter}. ${cleanOpt}.`
+          : `Option ${letter}.`,
+        label: `Option ${letter}`,
       });
     });
 

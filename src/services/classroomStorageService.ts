@@ -6,19 +6,37 @@ import {
 } from './geminiClientService';
 
 export function stripStoredOptionPrefix(rawOption: string): string {
-  let text = String(rawOption || '').normalize('NFC').trim();
+  let text = String(rawOption ?? '').normalize('NFC').trim();
+  if (!text) return '';
+  if (
+    /^(?:(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+)?\*?[A-Da-d]\s*[.:)\-–—]*$/i.test(
+      text
+    )
+  ) {
+    return '';
+  }
   for (let i = 0; i < 3; i++) {
     const next = text
-      .replace(/^(?:đáp\s*án|phương\s*án|lựa\s*chọn)\s+[A-Da-d]\s*[.:)\-–—]?\s*/i, '')
-      .replace(/^\([A-Da-d]\)\s*[.:;\-–—]?\s*/, '')
-      .replace(/^\[[A-Da-d]\]\s*[.:;\-–—]?\s*/, '')
-      .replace(/^[A-Da-d]\s*[.:)]\s*/, '')
-      .replace(/^[A-Da-d]\s+[-–—]\s+/, '')
+      .replace(
+        /^(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+\*?[A-Da-d]\s*[.:)\-–—]?\s*/i,
+        ''
+      )
+      .replace(/^\(\*?[A-Da-d]\)\s*[.:;\-–—]?\s*/, '')
+      .replace(/^\[\*?[A-Da-d]\]\s*[.:;\-–—]?\s*/, '')
+      .replace(/^\*?[A-Da-d]\s*[.:)]\s*/, '')
+      .replace(/^\*?[A-Da-d]\s+[-–—]\s+/, '')
       .trim();
     if (next === text) break;
     text = next;
   }
-  return text || String(rawOption || '').normalize('NFC').trim();
+  if (
+    /^(?:(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+)?\*?[A-Da-d]\s*[.:)\-–—]*$/i.test(
+      text
+    )
+  ) {
+    return '';
+  }
+  return text;
 }
 
 export function sanitizeStoredQuestions(questions?: Question[]): Question[] {
@@ -32,7 +50,7 @@ export function sanitizeStoredQuestions(questions?: Question[]): Question[] {
 
     const cleanOpts = Array.isArray(q?.options)
       ? q.options.map((opt) => stripStoredOptionPrefix(String(opt ?? '')))
-      : [];
+      : ['', '', '', ''];
     const correctIdx =
       typeof q?.correctIndex === 'number' && q.correctIndex >= 0 && q.correctIndex <= 3
         ? q.correctIndex
@@ -61,6 +79,7 @@ export function sanitizeStoredQuestions(questions?: Question[]): Question[] {
       visualPrompt: '',
       optionVisuals: Array.isArray(q?.optionVisuals) ? q.optionVisuals : undefined,
       optionSvgs: Array.isArray(q?.optionSvgs) ? q.optionSvgs : undefined,
+      optionImages: Array.isArray(q?.optionImages) ? q.optionImages : undefined,
     };
   });
   return normalizeQuestionVisuals(preCleaned);

@@ -276,9 +276,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   selectStudentToAnswer: (studentName, racerIndex) => {
     set((state) => {
       const normKey = normalizeEntityKey(studentName);
+      // Mỗi học sinh chỉ được gọi tối đa 1 lần trong 1 cuộc chơi
       const nextCalls = {
         ...state.studentCallCounts,
-        [normKey]: (state.studentCallCounts[normKey] || 0) + 1,
+        [normKey]: 1,
       };
       return {
         selectedStudentName: studentName,
@@ -891,15 +892,25 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       responseTimeSec,
     });
 
+    const correctLetter = ['A', 'B', 'C', 'D'][currentQuestion.correctIndex] || 'A';
+    const rawCorrectOptText = String(
+      currentQuestion.options?.[currentQuestion.correctIndex] ?? ''
+    ).trim();
     const correctAnswerText =
-      currentQuestion.options?.[currentQuestion.correctIndex] ||
-      currentQuestion.options?.[0] ||
-      '';
+      rawCorrectOptText && !/^(?:Option|Đáp\s*án)\s*[A-D]$/i.test(rawCorrectOptText)
+        ? `${correctLetter}. ${rawCorrectOptText}`
+        : `Option ${correctLetter}`;
+
+    const nextStudentCallCounts = {
+      ...studentCallCounts,
+      [normStudentKey]: 1,
+    };
 
     set({
       racers: updatedRacers,
       currentRacerIndex: targetRacerIndex,
       students: updatedStudents,
+      studentCallCounts: nextStudentCallCounts,
       sessionStudentRecords: nextSessionStudentRecords,
       currentClass: {
         ...currentClass,
@@ -917,7 +928,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         responseTimeSec,
         totalCorrectCount: gameMode === 'individual' ? newRacerCorrect : updatedSessionStd.correctCount,
         totalTimeSec: gameMode === 'individual' ? newRacerTimeSec : updatedSessionStd.totalTimeSec,
-        studentCallCount: studentCallCounts[normStudentKey] || updatedSessionStd.callCount || 1,
+        studentCallCount: 1,
         correctAnswerText,
         explanation: currentQuestion.explanation,
         isNitroTriggered,

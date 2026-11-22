@@ -191,19 +191,37 @@ export async function testGeminiApiKey(
  * Đảm bảo trên nút đáp án đã có huy hiệu A, B, C, D thì bên trong văn bản TUYỆT ĐỐI KHÔNG còn chữ A., B., C., D. lặp lại nữa!
  */
 export function stripOptionPrefix(rawOption: string): string {
-  let text = String(rawOption || '').normalize('NFC').trim();
+  let text = String(rawOption ?? '').normalize('NFC').trim();
+  if (!text) return '';
+  if (
+    /^(?:(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+)?\*?[A-Da-d]\s*[.:)\-–—]*$/i.test(
+      text
+    )
+  ) {
+    return '';
+  }
   for (let i = 0; i < 3; i++) {
     const next = text
-      .replace(/^(?:đáp\s*án|phương\s*án|lựa\s*chọn)\s+[A-Da-d]\s*[.:)\-–—]?\s*/i, '')
-      .replace(/^\([A-Da-d]\)\s*[.:;\-–—]?\s*/, '')
-      .replace(/^\[[A-Da-d]\]\s*[.:;\-–—]?\s*/, '')
-      .replace(/^[A-Da-d]\s*[.:)]\s*/, '')
-      .replace(/^[A-Da-d]\s+[-–—]\s+/, '')
+      .replace(
+        /^(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+\*?[A-Da-d]\s*[.:)\-–—]?\s*/i,
+        ''
+      )
+      .replace(/^\(\*?[A-Da-d]\)\s*[.:;\-–—]?\s*/, '')
+      .replace(/^\[\*?[A-Da-d]\]\s*[.:;\-–—]?\s*/, '')
+      .replace(/^\*?[A-Da-d]\s*[.:)]\s*/, '')
+      .replace(/^\*?[A-Da-d]\s+[-–—]\s+/, '')
       .trim();
     if (next === text) break;
     text = next;
   }
-  return text || String(rawOption || '').normalize('NFC').trim();
+  if (
+    /^(?:(?:option|answer|choice|đáp\s*án|phương\s*án|lựa\s*chọn)\s+)?\*?[A-Da-d]\s*[.:)\-–—]*$/i.test(
+      text
+    )
+  ) {
+    return '';
+  }
+  return text;
 }
 
 /**
@@ -284,14 +302,9 @@ export function sanitizePedagogicalQuestionStem(
 }
 
 /**
- * Chuẩn hóa danh sách câu hỏi từ AI:
- * 1. Loại bỏ triệt để các câu hỏi có nội dung trùng lặp (cả trùng trực tiếp và trùng với bộ câu hỏi cũ nếu có).
- * 2. Loại bỏ các câu hỏi đánh đố vị trí bố cục văn bản (gạch đầu hàng thứ mấy, mục số mấy...).
- * 3. Đảm bảo có từ 1 đến 3 câu hỏi nâng cao (isAdvanced: true, difficulty: 'nang_cao') mang tính chiều sâu.
- * 4. Ưu tiên tối đa hình ảnh minh họa trực quan và đảm bảo nguyên tắc loại trừ lẫn nhau tuyệt đối (1 trong 2):
- *    - 'question_image': Hình ảnh ở câu hỏi -> 4 đáp án A, B, C, D là văn bản thuần túy (không có hình).
- *    - 'options_image': Hình ảnh ở 4 đáp án -> Câu hỏi là văn bản thuần túy (không có hình).
- * 5. Loại bỏ tiền tố A., B., C., D. thừa trong nội dung 4 đáp án.
+ * Chuẩn hóa danh sách câu hỏi:
+ * - Hỗ trợ đáp án chỉ có văn bản, chỉ có hình ảnh (văn bản rỗng ''), hoặc có cả văn bản và hình ảnh.
+ * - Loại bỏ tiền tố A., B., C., D. hoặc "Option A..D" thừa trong nội dung 4 đáp án.
  */
 export function normalizeQuestionVisuals(
   questions: Question[],
@@ -351,10 +364,11 @@ export function normalizeQuestionVisuals(
       String(q?.id || '').startsWith('sample_') ||
       String(q?.id || '').startsWith('manual_');
 
-    const cleanOptions =
-      Array.isArray(q.options) && q.options.length === 4
-        ? q.options.map((o) => stripOptionPrefix(String(o)))
-        : ['Option A', 'Option B', 'Option C', 'Option D'];
+    // Cho phép đáp án không có văn bản (chỉ có hình ảnh) giữ nguyên chuỗi rỗng ''
+    const cleanOptions = [0, 1, 2, 3].map((optIdx) => {
+      const rawOpt = Array.isArray(q.options) ? q.options[optIdx] : '';
+      return stripOptionPrefix(String(rawOpt ?? ''));
+    });
 
     const rawQText = String(q.question || `Question ${idx + 1}`).normalize('NFC').trim();
     const isAdvFromText = /\[(?:vận dụng\s*)?nâng cao\]/i.test(rawQText);
@@ -362,9 +376,12 @@ export function normalizeQuestionVisuals(
       typeof q.correctIndex === 'number' && q.correctIndex >= 0 && q.correctIndex <= 3
         ? q.correctIndex
         : 0;
+    const correctLetter = ['A', 'B', 'C', 'D'][validCorrectIndex] || 'A';
+    const correctOptionLabel =
+      cleanOptions[validCorrectIndex] || `Option ${correctLetter}`;
     const cleanExplanation = String(
       q.explanation ||
-        `The correct answer is "${cleanOptions[validCorrectIndex] || cleanOptions[0]}", which matches the key vocabulary and grammar pattern of this Primary English lesson.`
+        `The correct answer is "${correctOptionLabel}", which matches the key vocabulary and grammar pattern of this Primary English lesson.`
     )
       .normalize('NFC')
       .trim();
@@ -389,6 +406,8 @@ export function normalizeQuestionVisuals(
       detectSemanticTopicKey(cleanExplanation, q.visualKey) ||
       'english_classroom_general';
 
+    const preservedOptionImages = Array.isArray(q.optionImages) ? q.optionImages : [];
+
     const draft: Question = {
       ...q,
       id: q.id || `q-${Date.now()}-${idx + 1}`,
@@ -405,7 +424,7 @@ export function normalizeQuestionVisuals(
       visualData: q.visualData || '',
       questionSvg: q.questionSvg || '',
       visualPrompt: q.visualPrompt || '',
-      optionImages: Array.isArray(q.optionImages) ? q.optionImages : [],
+      optionImages: preservedOptionImages,
     };
 
     const resolvedMode = resolveVisualDisplayMode(draft);
@@ -418,7 +437,7 @@ export function normalizeQuestionVisuals(
         visualPrompt: '',
         optionVisuals: uniformVisuals,
         optionSvgs: Array.isArray(q.optionSvgs) ? q.optionSvgs : [],
-        optionImages: Array.isArray(q.optionImages) ? q.optionImages : [],
+        optionImages: preservedOptionImages,
       };
     }
 
@@ -433,8 +452,8 @@ export function normalizeQuestionVisuals(
       visualData: draft.visualData || '',
       questionSvg: draft.questionSvg || '',
       optionVisuals: [],
-      optionSvgs: [],
-      optionImages: [],
+      optionSvgs: Array.isArray(q.optionSvgs) ? q.optionSvgs : [],
+      optionImages: preservedOptionImages,
     };
   });
 

@@ -639,11 +639,10 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
           Boolean(img && img.trim())
         );
 
+        // Cho phép đáp án không có văn bản (chỉ hiển thị hình ảnh) giữ nguyên chuỗi rỗng ''
         const filledOpts = [0, 1, 2, 3].map((idx) => {
           const rawOpt = (currentQuestion?.options[idx] || '').trim();
-          const stripped = stripOptionPrefix(rawOpt);
-          if (stripped) return stripped;
-          return `Option ${String.fromCharCode(65 + idx)}`;
+          return stripOptionPrefix(rawOpt);
         });
 
         const topicKey = detectSemanticTopicKey(qStem);
@@ -659,9 +658,7 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
           difficulty: currentQuestion.difficulty,
           isAdvanced: currentQuestion.difficulty === 'nang_cao',
           visualKey: topicKey,
-          visualData: hasExplicitOptionBitmaps
-            ? ''
-            : resolvedQuestionImages[0] || '',
+          visualData: resolvedQuestionImages[0] || '',
           optionImages: hasExplicitOptionBitmaps ? resolvedOptImages : [],
         };
 
@@ -672,9 +669,8 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
         rawQuestions.push({
           ...draftForMode,
           visualDisplayMode: mode,
-          visualData:
-            mode === 'options_image' ? '' : resolvedQuestionImages[0] || '',
-          optionImages: mode === 'options_image' ? resolvedOptImages : [],
+          visualData: resolvedQuestionImages[0] || '',
+          optionImages: hasExplicitOptionBitmaps ? resolvedOptImages : [],
           questionSvg:
             mode === 'options_image' || resolvedQuestionImages[0]
               ? ''
@@ -713,8 +709,11 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
       const qMatch = line.match(
         /^(?:Câu(?:\s*hỏi)?\s*\d+|Question\s*\d+|\d+)\s*[:.)]\s*(.+)$/i
       );
-      // Cho phép dòng đáp án chỉ có "A." + hình ảnh (không bắt buộc có chữ sau A.)
-      const optMatch = line.match(/^(\*?[A-Da-d])\s*[.:)]\s*(.*)$/);
+      // Cho phép dòng đáp án chỉ có "A." hoặc "A" + hình ảnh (không bắt buộc có chữ sau A.)
+      const optMatch =
+        line.match(/^(\*?[A-Da-d])\s*[.:)\-]\s*(.*)$/) ||
+        line.match(/^(?:Option|Đáp\s*án|Phương\s*án)\s+(\*?[A-Da-d])\s*[.:)\-]?\s*(.*)$/i) ||
+        (currentQuestion ? line.match(/^(\*?[A-Da-d])()$/) : null);
       const ansMatch = line.match(
         /^(?:Đáp\s*án(?:\s*đúng)?|Answer|Correct(?:\s*answer)?)\s*[:=\-]\s*([A-Da-d1-4])/i
       );
@@ -771,13 +770,13 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
                   const oIdx = ['A', 'B', 'C', 'D'].indexOf(letter);
                   if (oIdx !== -1) {
                     currentQuestion.activeOptionIdx = oIdx;
-                    const content = (sm[2] || '').trim();
+                    const content = stripOptionPrefix((sm[2] || '').trim());
                     if (starred || content.endsWith('*')) {
                       currentQuestion.options[oIdx] = content
                         .replace(/\*+$/, '')
                         .trim();
                       currentQuestion.correctIndex = oIdx;
-                    } else if (content) {
+                    } else {
                       currentQuestion.options[oIdx] = content;
                     }
                   }
@@ -786,7 +785,7 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
                 currentQuestion.activeOptionIdx >= 0 &&
                 currentQuestion.activeOptionIdx <= 3
               ) {
-                const extra = tok.value.trim();
+                const extra = stripOptionPrefix(tok.value.trim());
                 if (extra) {
                   currentQuestion.options[currentQuestion.activeOptionIdx] = (
                     (currentQuestion.options[currentQuestion.activeOptionIdx] ||
@@ -805,7 +804,7 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
           const hasLeadingStar = rawPrefix.startsWith('*');
           const optLetter = rawPrefix.replace('*', '');
           const idx = ['A', 'B', 'C', 'D'].indexOf(optLetter);
-          const optContent = (optMatch[2] || '').trim();
+          const optContent = stripOptionPrefix((optMatch[2] || '').trim());
 
           if (idx !== -1) {
             currentQuestion.activeOptionIdx = idx;
@@ -831,11 +830,14 @@ export async function parseDocxQuestions(file: File): Promise<ParsedUserQuizResu
           currentQuestion.activeOptionIdx <= 3
         ) {
           const idx = currentQuestion.activeOptionIdx;
-          currentQuestion.options[idx] = (
-            (currentQuestion.options[idx] || '') +
-            ' ' +
-            line
-          ).trim();
+          const cleanedExtra = stripOptionPrefix(line);
+          if (cleanedExtra) {
+            currentQuestion.options[idx] = (
+              (currentQuestion.options[idx] || '') +
+              ' ' +
+              cleanedExtra
+            ).trim();
+          }
         }
         for (const img of item.images) {
           assignImageToCurrentQuestion(img);
@@ -897,11 +899,9 @@ export function parseRawUserQuizText(rawText: string): ParsedUserQuizResult {
   const flushCurrent = () => {
     if (!currentQuestion) return;
     if (currentQuestion.question.trim()) {
-      const filledOpts = [...currentQuestion.options];
-      while (filledOpts.length < 4) {
-        filledOpts.push(`Option ${String.fromCharCode(65 + filledOpts.length)}`);
-      }
-      const cleanOpts = filledOpts.slice(0, 4).map((o) => stripOptionPrefix(o));
+      const cleanOpts = [0, 1, 2, 3].map((idx) =>
+        stripOptionPrefix(currentQuestion?.options[idx] || '')
+      );
       const qStem = currentQuestion.question.trim();
       const topicKey = detectSemanticTopicKey(qStem);
       const draftQ: Question = {
@@ -940,7 +940,9 @@ export function parseRawUserQuizText(rawText: string): ParsedUserQuizResult {
     const qMatch = line.match(
       /^(?:Câu(?:\s*hỏi)?\s*\d+|Question\s*\d+|\d+)\s*[:.)]\s*(.+)$/i
     );
-    const optMatch = line.match(/^(\*?[A-Da-d])\s*[.:)]\s*(.*)$/);
+    const optMatch =
+      line.match(/^(\*?[A-Da-d])\s*[.:)\-]\s*(.*)$/) ||
+      (currentQuestion ? line.match(/^(\*?[A-Da-d])()$/) : null);
     const ansMatch = line.match(
       /^(?:Đáp\s*án(?:\s*đúng)?|Answer|Correct(?:\s*answer)?)\s*[:=\-]\s*([A-Da-d1-4])/i
     );
@@ -953,7 +955,7 @@ export function parseRawUserQuizText(rawText: string): ParsedUserQuizResult {
       flushCurrent();
       currentQuestion = {
         question: qMatch[1].trim(),
-        options: [],
+        options: ['', '', '', ''],
         correctIndex: 0,
         explanation: '',
         difficulty: 'co_ban',
@@ -963,7 +965,7 @@ export function parseRawUserQuizText(rawText: string): ParsedUserQuizResult {
       const hasLeadingStar = rawPrefix.startsWith('*');
       const optLetter = rawPrefix.replace('*', '');
       const idx = ['A', 'B', 'C', 'D'].indexOf(optLetter);
-      const optContent = (optMatch[2] || '').trim();
+      const optContent = stripOptionPrefix((optMatch[2] || '').trim());
       if (hasLeadingStar || optContent.endsWith('*')) {
         currentQuestion.options[idx] = optContent.replace(/\*+$/, '').trim();
         currentQuestion.correctIndex = idx;

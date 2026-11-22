@@ -1124,37 +1124,52 @@ export const RaceSetupModal: React.FC<RaceSetupModalProps> = ({
                       )}
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-2 sm:pl-6">
-                        {q.options.map((opt, optIdx) => (
-                          <div
-                            key={optIdx}
-                            className={`p-2 rounded-xl text-[11px] flex flex-col gap-1.5 ${
-                              optIdx === q.correctIndex
-                                ? 'bg-emerald-950/80 border border-emerald-500 text-emerald-200 font-bold'
-                                : 'bg-slate-900/60 text-slate-300 border border-slate-800'
-                            }`}
-                          >
-                            {uniformOpts && (
-                              <OptionVisualIllustration
-                                question={q}
-                                optionText={stripOptionPrefix(opt)}
-                                visualSpec={uniformOpts[optIdx]}
-                                optionSvg={q.optionSvgs?.[optIdx]}
-                                optionImage={q.optionImages?.[optIdx]}
-                                optionIndex={optIdx}
-                                visualType={q.visualType}
-                                questionText={q.question}
-                                compact
-                              />
-                            )}
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-4 h-4 rounded-full bg-slate-800 text-[10px] flex items-center justify-center shrink-0">
-                                {String.fromCharCode(65 + optIdx)}
-                              </span>
-                              <span>{stripOptionPrefix(opt)}</span>
-                              {optIdx === q.correctIndex && <Check className="w-3.5 h-3.5 text-emerald-400 ml-auto shrink-0" />}
+                        {q.options.map((opt, optIdx) => {
+                          const cleanedOpt = stripOptionPrefix(opt);
+                          const hasOptText = Boolean(cleanedOpt);
+                          const hasAnyBitmap = Boolean(
+                            q.optionImages?.some((img) => Boolean(img && img.trim()))
+                          );
+                          const hasThisBitmap = Boolean(
+                            q.optionImages?.[optIdx] && q.optionImages[optIdx].trim()
+                          );
+                          const showOptImg = hasAnyBitmap
+                            ? hasThisBitmap || !hasOptText
+                            : Boolean(uniformOpts) || !hasOptText;
+                          return (
+                            <div
+                              key={optIdx}
+                              className={`p-2 rounded-xl text-[11px] flex flex-col gap-1.5 ${
+                                optIdx === q.correctIndex
+                                  ? 'bg-emerald-950/80 border border-emerald-500 text-emerald-200 font-bold'
+                                  : 'bg-slate-900/60 text-slate-300 border border-slate-800'
+                              }`}
+                            >
+                              {showOptImg && (
+                                <OptionVisualIllustration
+                                  question={q}
+                                  optionText={cleanedOpt}
+                                  visualSpec={uniformOpts?.[optIdx]}
+                                  optionSvg={q.optionSvgs?.[optIdx]}
+                                  optionImage={q.optionImages?.[optIdx]}
+                                  optionIndex={optIdx}
+                                  visualType={q.visualType}
+                                  questionText={q.question}
+                                  compact
+                                />
+                              )}
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-4 h-4 rounded-full bg-slate-800 text-[10px] flex items-center justify-center shrink-0">
+                                  {String.fromCharCode(65 + optIdx)}
+                                </span>
+                                {hasOptText && <span>{cleanedOpt}</span>}
+                                {optIdx === q.correctIndex && (
+                                  <Check className="w-3.5 h-3.5 text-emerald-400 ml-auto shrink-0" />
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -1792,32 +1807,50 @@ export const RaceSetupModal: React.FC<RaceSetupModalProps> = ({
                               )}
                               {!showQImg && uniformOpts && (
                                 <div className="grid grid-cols-2 gap-1.5 pt-1">
-                                  {q.options.map((opt, oIdx) => (
-                                    <div
-                                      key={oIdx}
-                                      className="p-1.5 rounded-lg bg-slate-950/70 border border-slate-800 flex flex-col gap-1"
-                                    >
-                                      <OptionVisualIllustration
-                                        question={q}
-                                        optionText={stripOptionPrefix(opt)}
-                                        visualSpec={uniformOpts[oIdx]}
-                                        optionSvg={q.optionSvgs?.[oIdx]}
-                                        optionImage={q.optionImages?.[oIdx]}
-                                        optionIndex={oIdx}
-                                        visualType={q.visualType}
-                                        questionText={q.question}
-                                        compact
-                                      />
-                                      <span className="text-[10px] font-bold text-slate-200">
-                                        {String.fromCharCode(65 + oIdx)}. {stripOptionPrefix(opt)}
-                                      </span>
-                                    </div>
-                                  ))}
+                                  {q.options.map((opt, oIdx) => {
+                                    const cleanedOpt = stripOptionPrefix(opt);
+                                    const hasOptText = Boolean(cleanedOpt);
+                                    const hasAnyBitmap = Boolean(
+                                      q.optionImages?.some((img) => Boolean(img && img.trim()))
+                                    );
+                                    const hasThisBitmap = Boolean(
+                                      q.optionImages?.[oIdx] && q.optionImages[oIdx].trim()
+                                    );
+                                    const showOptImg = hasAnyBitmap
+                                      ? hasThisBitmap || !hasOptText
+                                      : true;
+                                    return (
+                                      <div
+                                        key={oIdx}
+                                        className="p-1.5 rounded-lg bg-slate-950/70 border border-slate-800 flex flex-col gap-1"
+                                      >
+                                        {showOptImg && (
+                                          <OptionVisualIllustration
+                                            question={q}
+                                            optionText={cleanedOpt}
+                                            visualSpec={uniformOpts[oIdx]}
+                                            optionSvg={q.optionSvgs?.[oIdx]}
+                                            optionImage={q.optionImages?.[oIdx]}
+                                            optionIndex={oIdx}
+                                            visualType={q.visualType}
+                                            questionText={q.question}
+                                            compact
+                                          />
+                                        )}
+                                        <span className="text-[10px] font-bold text-slate-200">
+                                          {String.fromCharCode(65 + oIdx)}
+                                          {hasOptText ? `. ${cleanedOpt}` : ''}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                               <span className="block text-emerald-400 font-bold">
-                                ✓ Đáp án đúng: {String.fromCharCode(65 + (q.correctIndex ?? 0))}.{' '}
-                                {stripOptionPrefix(q.options[q.correctIndex] || '')}
+                                ✓ Đáp án đúng: {String.fromCharCode(65 + (q.correctIndex ?? 0))}
+                                {stripOptionPrefix(q.options[q.correctIndex] || '')
+                                  ? `. ${stripOptionPrefix(q.options[q.correctIndex] || '')}`
+                                  : ''}
                               </span>
                             </div>
                           );

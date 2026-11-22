@@ -65,9 +65,10 @@ function normalizeAngleRad(angle: number): number {
 const StudentOnMatCard: React.FC<{
   student: StudentMatEntity;
   isCaught: boolean;
+  isAlreadyCalled: boolean;
   onClick: () => void;
-}> = ({ student, isCaught, onClick }) => {
-  const dipping = student.isDippingLegs || isCaught;
+}> = ({ student, isCaught, isAlreadyCalled, onClick }) => {
+  const dipping = (student.isDippingLegs && !isAlreadyCalled) || isCaught;
   const leftKick = dipping ? Math.sin(student.legKickPhase) * 3.5 : 0;
   const rightKick = dipping ? Math.sin(student.legKickPhase + Math.PI) * 3.5 : 0;
   const rippleScale = 0.92 + Math.sin(student.legKickPhase * 1.6) * 0.16;
@@ -75,8 +76,12 @@ const StudentOnMatCard: React.FC<{
   return (
     <div
       onClick={onClick}
-      className={`group relative flex flex-col items-center justify-center select-none cursor-pointer transition-all duration-200 ${
-        isCaught ? 'scale-110 z-40' : 'hover:scale-105 z-10'
+      className={`group relative flex flex-col items-center justify-center select-none transition-all duration-200 ${
+        isCaught
+          ? 'scale-110 z-40 cursor-pointer'
+          : isAlreadyCalled
+          ? 'opacity-75 z-10 cursor-not-allowed'
+          : 'hover:scale-105 z-10 cursor-pointer'
       }`}
     >
       {/* Glowing Golden Spotlight Halo behind the Caught Student Character */}
@@ -242,6 +247,8 @@ const StudentOnMatCard: React.FC<{
         className={`relative z-20 -mt-2 px-2.5 py-1 rounded-xl text-center leading-tight shadow-lg transition-all ${
           isCaught
             ? 'bg-amber-400 text-slate-950 border-2 border-white ring-2 ring-rose-500 shadow-[0_0_20px_rgba(250,204,21,0.95)] min-w-[144px]'
+            : isAlreadyCalled
+            ? 'bg-slate-900/95 text-slate-300 border border-emerald-500/60 min-w-[134px] max-w-[158px]'
             : dipping
             ? 'bg-sky-950/95 text-sky-100 border border-sky-400/75 group-hover:border-amber-300 min-w-[134px] max-w-[158px]'
             : 'bg-slate-950/90 text-emerald-100 border border-emerald-400/45 group-hover:border-amber-300 min-w-[134px] max-w-[158px]'
@@ -260,12 +267,20 @@ const StudentOnMatCard: React.FC<{
           className={`text-[8px] sm:text-[9px] font-extrabold uppercase tracking-wider mt-0.5 ${
             isCaught
               ? 'text-rose-700'
+              : isAlreadyCalled
+              ? 'text-emerald-400'
               : dipping
               ? 'text-cyan-300'
               : 'text-emerald-400'
           }`}
         >
-          {isCaught ? '🐊 BỊ CÁ SẤU BẮT!' : dipping ? '💦 Thò chân xuống nước' : '🛡️ Đứng trên thảm'}
+          {isCaught
+            ? '🐊 BỊ CÁ SẤU BẮT (1/1)!'
+            : isAlreadyCalled
+            ? '✓ Đã được gọi (1/1)'
+            : dipping
+            ? '💦 Thò chân xuống nước'
+            : '🛡️ Đứng trên thảm'}
         </div>
       </div>
     </div>
@@ -468,11 +483,17 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
     isSnapping: false,
   });
   const [caughtStudentName, setCaughtStudentName] = useState<string | null>(null);
+  const [callNotice, setCallNotice] = useState<string | null>(null);
 
   const canvasMountRef = useRef<HTMLDivElement | null>(null);
   const scrollLakeRef = useRef<HTMLDivElement | null>(null);
   const matDomRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const studentMatsRef = useRef<StudentMatEntity[]>([]);
+  const studentCallCountsRef = useRef<Record<string, number>>(studentCallCounts);
+  useEffect(() => {
+    studentCallCountsRef.current = studentCallCounts;
+  }, [studentCallCounts]);
+
   const crocRef = useRef<CrocodileSwimState>({
     xPx: 180,
     yPercent: 52,
@@ -497,7 +518,7 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
     chosenIdx: 0,
     decoyIdx: 0,
     elapsedSec: 0,
-    durationSec: 2.35,
+    durationSec: 2.75,
     lastSplashSec: 0,
   });
 
@@ -841,8 +862,23 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
       const chasing = chaseDataRef.current.active;
       const lockedIdx = lockedCaughtIdxRef.current;
 
-      // 1. Update Students on their Small Mats (randomly dipping legs down into the water & kicking)
+      const normalizeKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+      // 1. Update Students on their Small Mats (only uncalled students dip their legs into the water)
       const nextMats = studentMatsRef.current.map((st, idx) => {
+        const alreadyCalled =
+          (studentCallCountsRef.current[normalizeKey(st.name)] || 0) >= 1 &&
+          lockedIdx !== idx &&
+          !(chasing && idx === chaseDataRef.current.chosenIdx);
+
+        if (alreadyCalled) {
+          return {
+            ...st,
+            isDippingLegs: false,
+            dipTimerSec: 2.0,
+          };
+        }
+
         let timer = st.dipTimerSec - dt;
         let isDipping = st.isDippingLegs;
 
@@ -895,14 +931,18 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
 
         if (el < dur * 0.62) {
           if (Math.floor(el * 1.8) !== Math.floor((el - dt) * 1.8)) {
-            const dippingCandidates = nextMats
+            const uncalledPool = nextMats
               .map((s, i) => ({ s, i }))
-              .filter(({ s }) => s.isDippingLegs);
-            if (dippingCandidates.length > 0) {
+              .filter(({ s }) => (studentCallCountsRef.current[normalizeKey(s.name)] || 0) === 0);
+            const dippingUncalled = uncalledPool.filter(({ s }) => s.isDippingLegs);
+            if (dippingUncalled.length > 0) {
               chaseDataRef.current.decoyIdx =
-                dippingCandidates[Math.floor(Math.random() * dippingCandidates.length)].i;
+                dippingUncalled[Math.floor(Math.random() * dippingUncalled.length)].i;
+            } else if (uncalledPool.length > 0) {
+              chaseDataRef.current.decoyIdx =
+                uncalledPool[Math.floor(Math.random() * uncalledPool.length)].i;
             } else {
-              chaseDataRef.current.decoyIdx = Math.floor(Math.random() * nextMats.length);
+              chaseDataRef.current.decoyIdx = chaseDataRef.current.chosenIdx;
             }
           }
           const decoyCoords = getStudentMatCoords(chaseDataRef.current.decoyIdx);
@@ -1092,9 +1132,47 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
     };
   }, []);
 
+  const normalizeStudentKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
   const startCrocodileCatch = () => {
     if (isChasingRef.current || studentMatsRef.current.length === 0) return;
 
+    const currentPool = studentMatsRef.current;
+    // Mỗi học sinh chỉ được gọi DUY NHẤT 1 LẦN trong một cuộc chơi (callCount === 0)
+    const uncalledCandidates = currentPool
+      .map((m, idx) => ({ m, idx }))
+      .filter(({ m }) => (studentCallCountsRef.current[normalizeStudentKey(m.name)] || 0) === 0);
+
+    if (uncalledCandidates.length === 0) {
+      // Nếu đang ở chế độ Nhóm (Team Mode), kiểm tra xem có đội nào khác còn học sinh chưa được gọi không
+      if (gameMode === 'team') {
+        const nextTeamWithUncalledIdx = racers.findIndex((r, rIdx) => {
+          if (rIdx === currentRacerIndex) return false;
+          const teamMembers =
+            r.memberNames && r.memberNames.length > 0
+              ? r.memberNames
+              : students.filter((s) => s.teamId === r.id).map((s) => s.name);
+          return teamMembers.some(
+            (name) => (studentCallCountsRef.current[normalizeStudentKey(name)] || 0) === 0
+          );
+        });
+
+        if (nextTeamWithUncalledIdx !== -1) {
+          onSelectTeamFilter(nextTeamWithUncalledIdx);
+          setCallNotice(
+            `Đội hiện tại đã gọi hết học sinh. Đã chuyển sang ${racers[nextTeamWithUncalledIdx].name} — bấm "🐊 CROCODILE CATCH!" để gọi tiếp!`
+          );
+          window.setTimeout(() => setCallNotice(null), 3500);
+          return;
+        }
+      }
+
+      setCallNotice('🎉 Tất cả học sinh đều đã được gọi đủ 1 lần trong cuộc chơi này!');
+      window.setTimeout(() => setCallNotice(null), 4000);
+      return;
+    }
+
+    setCallNotice(null);
     sound.playCrocodileSwimSplash();
     lockedCaughtIdxRef.current = null;
     manualScrollPauseUntilRef.current = 0;
@@ -1102,28 +1180,15 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
     setIsChasing(true);
     setCaughtStudentName(null);
 
-    const currentPool = studentMatsRef.current;
-    const normalizeKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-    const minCalls = Math.min(
-      ...currentPool.map((m) => studentCallCounts[normalizeKey(m.name)] || 0)
-    );
-    const fairCandidates = currentPool
-      .map((m, idx) => ({ m, idx }))
-      .filter(({ m }) => (studentCallCounts[normalizeKey(m.name)] || 0) <= minCalls + 1);
-
-    const pickedEntry = (fairCandidates.length > 0
-      ? fairCandidates
-      : currentPool.map((m, idx) => ({ m, idx })))[
-      Math.floor(
-        Math.random() *
-          (fairCandidates.length > 0 ? fairCandidates.length : currentPool.length)
-      )
-    ];
+    const pickedEntry =
+      uncalledCandidates[Math.floor(Math.random() * uncalledCandidates.length)];
+    const initialDecoyEntry =
+      uncalledCandidates[Math.floor(Math.random() * uncalledCandidates.length)];
 
     chaseDataRef.current = {
       active: true,
       chosenIdx: pickedEntry.idx,
-      decoyIdx: Math.floor(Math.random() * currentPool.length),
+      decoyIdx: initialDecoyEntry.idx,
       elapsedSec: 0,
       durationSec: 2.75,
       lastSplashSec: 0,
@@ -1142,8 +1207,21 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
     ? studentMats.find((m) => m.name === activeCaughtName) || null
     : null;
 
+  const uncalledRemainingCount = studentMats.filter(
+    (m) => (studentCallCounts[normalizeStudentKey(m.name)] || 0) === 0
+  ).length;
+  const allStudentsCalledInPool =
+    studentMats.length > 0 && uncalledRemainingCount === 0;
+
   return (
     <div className="w-full h-full flex flex-col bg-sky-950 rounded-2xl border-2 border-cyan-400/70 shadow-2xl overflow-hidden relative">
+      {/* Notice Toast when a student was already called or all students have been called */}
+      {callNotice && (
+        <div className="absolute top-11 left-1/2 -translate-x-1/2 z-50 px-3.5 py-1.5 rounded-xl bg-amber-400 text-slate-950 font-black text-[11px] sm:text-xs shadow-2xl border-2 border-white whitespace-nowrap animate-in fade-in zoom-in-95">
+          {callNotice}
+        </div>
+      )}
+
       {/* Top 3D Lake Control Bar */}
       <div className="px-3 py-1.5 bg-slate-950/95 border-b border-cyan-400/30 flex flex-wrap items-center justify-between gap-1.5 shrink-0 z-30">
         <div className="flex items-center gap-2 min-w-0">
@@ -1152,9 +1230,12 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
           </div>
           <div className="min-w-0">
             <h3 className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-cyan-300 flex items-center gap-1.5 truncate">
-              <span>CROCODILE ASHORE • 3D LAKE ARENA</span>
-              <span className="text-[10px] bg-emerald-500/20 text-emerald-200 px-1.5 py-0.5 rounded-md border border-emerald-400/30 shrink-0">
-                🐊 {studentMats.length} Mats
+              <span>CROCODILE ASHORE • 3D LAKE</span>
+              <span
+                className="text-[10px] bg-emerald-500/20 text-emerald-200 px-1.5 py-0.5 rounded-md border border-emerald-400/30 shrink-0"
+                title="Each student can only be called once per game session"
+              >
+                🐊 Uncalled: {uncalledRemainingCount}/{studentMats.length}
               </span>
             </h3>
           </div>
@@ -1206,11 +1287,17 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
 
           <button
             onClick={startCrocodileCatch}
-            disabled={isChasing}
+            disabled={isChasing || (allStudentsCalledInPool && gameMode !== 'team')}
             className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-400 via-lime-400 to-amber-400 hover:from-emerald-300 hover:to-amber-300 disabled:opacity-50 text-slate-950 font-black text-xs shadow-lg flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
-            <span>{isChasing ? '🐊 CROCODILE SWIMMING...' : '🐊 CROCODILE CATCH!'}</span>
+            <span>
+              {isChasing
+                ? '🐊 CROCODILE SWIMMING...'
+                : allStudentsCalledInPool && gameMode !== 'team'
+                ? '✓ ALL CALLED (1/1)'
+                : '🐊 CROCODILE CATCH!'}
+            </span>
           </button>
         </div>
       </div>
@@ -1240,6 +1327,8 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
             <div className="grid grid-rows-2 grid-flow-col auto-cols-max gap-x-6 gap-y-2 items-center my-auto pr-12">
               {studentMats.map((student, idx) => {
                 const isCaught = activeCaughtName === student.name;
+                const isAlreadyCalled =
+                  (studentCallCounts[normalizeStudentKey(student.name)] || 0) >= 1;
                 return (
                   <div
                     key={`${student.name}-${idx}`}
@@ -1251,8 +1340,16 @@ export const ChickPickerArena: React.FC<ChickPickerArenaProps> = ({
                     <StudentOnMatCard
                       student={student}
                       isCaught={isCaught}
+                      isAlreadyCalled={isAlreadyCalled}
                       onClick={() => {
                         if (isChasing) return;
+                        if (isAlreadyCalled) {
+                          setCallNotice(
+                            `Bạn ${student.name} đã được gọi 1 lần trong cuộc chơi này (mỗi học sinh chỉ gọi 1 lần)!`
+                          );
+                          window.setTimeout(() => setCallNotice(null), 3200);
+                          return;
+                        }
                         const coords = getStudentMatCoords(idx);
                         lockedCaughtIdxRef.current = idx;
                         manualScrollPauseUntilRef.current = 0;
